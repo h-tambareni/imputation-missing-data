@@ -1,0 +1,59 @@
+rm(list = ls())
+bcw <- read.table("breast-cancer-wisconsin.data.txt" , stringsAsFactors = FALSE, header = FALSE, sep = ",")
+
+summary(bcw)
+
+#find missing data
+impute <- which(bcw$V7=="?")
+impute
+
+#percent of missing data
+missing_percent <- length(impute)/nrow(bcw)
+missing_percent #2.29%
+
+#checking bias
+bcw_clean <- bcw[-impute,]
+bcw_missing <- bcw[impute,]
+
+bias_total <- sum(bcw$V11 == 2)/nrow(bcw)
+bias_clean <- sum(bcw_clean$V11 == 2)/nrow(bcw_clean)
+bias_missing <- sum(bcw_missing$V11 == 2)/nrow(bcw_missing)
+
+#percentage of v11 as 2 (binary type of response: 2 or 4)
+bias_total #65.52%
+bias_clean #65.01%
+bias_missing #87.5%
+
+#impute missing values with mode/mean
+mean<-round(mean(as.integer(bcw[-impute,7]),na.rm = TRUE), digits = 0)
+mean #mean rounded is 4
+bcw[impute,7] <- mean
+
+#impute missing values with regression prediction
+library(DAAG)
+set.seed(42)
+regression <- read.table("breast-cancer-wisconsin.data.txt" , stringsAsFactors = FALSE, header = FALSE, sep = ",")
+data_clean <- regression[-impute,2:10]
+data_clean$V7 = as.integer(data_clean$V7)
+
+model = lm(V7~., data_clean)
+step(model) #dimensionality reduction: V2, V4, V5, V8
+
+model_cv = cv.lm(data_clean, model, m=5)
+imputed_reg = round(predict(model,regression[impute,]))
+regression[impute,]$V7 <- imputed_reg
+regression
+
+#impute missing values with regression prediction and perturb to add variance
+perturb <- read.table("breast-cancer-wisconsin.data.txt" , stringsAsFactors = FALSE, header = FALSE, sep = ",")
+
+pert = round(rnorm(nrow(perturb[impute,]),
+                   mean = mean(imputed_reg),
+                   sd = sd(imputed_reg)))
+pert #there is a negative number
+
+perturb[impute,]$V7 <- pert
+perturb$V7[perturb$V7 < 1] = 1
+perturb[impute,]$V7
+
+perturb$V7[perturb$V7 > 10] = 10
